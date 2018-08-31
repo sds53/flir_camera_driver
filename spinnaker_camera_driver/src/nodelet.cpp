@@ -103,10 +103,6 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       diagThread_->join();
     }
 
-    if (async_spinner_) {
-      async_spinner_->stop();
-    }
-
     if (pubThread_) {
       pubThread_->interrupt();
 
@@ -408,20 +404,21 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
 
     // Set up all the stuff for mavros triggering.
     if (force_mavros_triggering_) {
-      // async_spinner_.reset(new ros::AsyncSpinner(1));
-      // async_spinner_->start();
-
       // First subscribe to the messages so we don't miss any.
       cam_imu_sub_ =
           nh.subscribe("/mavros/cam_imu_sync/cam_imu_stamp", 100,
                        &SpinnakerCameraNodelet::camImuStampCallback, this);
-
+      first_image_ = true;
       const std::string mavros_trigger_service = "/mavros/cmd/trigger_control";
       if (ros::service::exists(mavros_trigger_service, false)) {
         mavros_msgs::CommandTriggerControl req;
+        // req.request.trigger_enable = false;
+        // req.request.integration_time = 0.0;  //???
+        // ros::service::call(mavros_trigger_service, req);
         req.request.trigger_enable = true;
-        req.request.integration_time = 0.0;  //???
+
         ros::service::call(mavros_trigger_service, req);
+
         ROS_INFO("Called mavros trigger service! Success? %d Result? %d",
                  req.response.success, req.response.result);
       }
@@ -616,6 +613,15 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
                      wfov_image->image.header.seq,
                      wfov_image->image.header.stamp.toSec());
 
+            bool should_publish = true;
+            if (force_mavros_triggering_) {
+              if (!lookupSequenceStamp(wfov_image->image.header,
+                                       &wfov_image->image.header.stamp)) {
+                image_queue_.reset(new sensor_msgs::Image(wfov_image->image));
+                should_publish = false;
+              }
+            }
+
             // Set other values
             wfov_image->header.frame_id = frame_id_;
 
@@ -628,7 +634,6 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
             ros::Time time = ros::Time::now();
             wfov_image->header.stamp = time;
             wfov_image->image.header.stamp = time;
-
 
             // Set the CameraInfo message
             ci_.reset(new sensor_msgs::CameraInfo(cinfo_->getCameraInfo()));
@@ -650,7 +655,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
             pub_->publish(wfov_image);
 
             // Publish the message using standard image transport
-            if (it_pub_.getNumSubscribers() > 0) {
+            if (it_pub_.getNumSubscribers() > 0 && should_publish) {
               sensor_msgs::ImagePtr image(
                   new sensor_msgs::Image(wfov_image->image));
               it_pub_.publish(image, ci_);
@@ -699,6 +704,42 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
         "[Cam Imu Sync] Received a new stamp for sequence number: %ld with "
         "stamp: %f",
         cam_imu_stamp.frame_seq_id, cam_imu_stamp.frame_stamp.toSec());
+
+    if (image_queue_ &&
+        lookupSequenceStamp(image_queue_->header, &image_queue_->header.stamp)) {
+      if (it_pub_.getNumSubscribers() > 0) {
+        it_pub_.publish(image_queue_, ci_);
+      }
+      image_queue_.reset();
+      ROS_INFO("Publishing delayed image.");
+    }
+  }
+
+  bool lookupSequenceStamp(const std_msgs::Header& header,
+                           ros::Time* timestamp) {
+    if (sequence_time_map_.empty()) {
+      return false;
+    }
+    if (first_image_) {
+      // Get the latest? First? From the sequence time map.
+      auto it = sequence_time_map_.begin();
+      trigger_sequence_offset_ = it->first - header.seq;
+      *timestamp = it->second;
+      first_image_ = false;
+      sequence_time_map_.erase(sequence_time_map_.find(it->first));
+      return true;
+    }
+    auto it = sequence_time_map_.find(header.seq + trigger_sequence_offset_);
+    if (it == sequence_time_map_.end()) {
+      return false;
+    }
+    *timestamp = it->second;
+    sequence_time_map_.erase(it);
+
+    ROS_INFO("Remapped seq %d to %d, %f to %f", header.seq,
+             header.seq + trigger_sequence_offset_, header.stamp.toSec(),
+             it->second.toSec());
+    return true;
   }
 
   /* Class Fields */
@@ -754,8 +795,8 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
   size_t roi_y_offset_;  ///< Camera Info ROI y offset
   size_t roi_height_;    ///< Camera Info ROI height
   size_t roi_width_;     ///< Camera Info ROI width
-  bool do_rectify_;  ///< Whether or not to rectify as if part of an image.  Set
-                     /// to false if whole image, and true if in
+  bool do_rectify_;  ///< Whether or not to rectify as if part of an image. Set
+  /// to false if whole image, and true if in
   /// ROI mode.
 
   // For GigE cameras:
@@ -773,8 +814,9 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
   int32_t trigger_sequence_offset_;
   std::map<uint32_t, ros::Time> sequence_time_map_;
   ros::Subscriber cam_imu_sub_;
-
-  std::shared_ptr<ros::AsyncSpinner> async_spinner_;
+  // We assume this can NEVER be more than 1.
+  sensor_msgs::ImagePtr image_queue_;
+  bool first_image_;
 
   /// Configuration:
   spinnaker_camera_driver::SpinnakerConfig config_;
