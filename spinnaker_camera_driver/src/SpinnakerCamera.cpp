@@ -329,8 +329,9 @@ void SpinnakerCamera::grabImage(sensor_msgs::Image* image,
             std::to_string(serial_) + " is incomplete.");
       } else {
         // Set Image Time Stamp
-        image->header.stamp.sec = image_ptr->GetTimeStamp() * 1e-9;
-        image->header.stamp.nsec = image_ptr->GetTimeStamp();
+        // API description is wrong, this is NOT nanoseconds.
+        image->header.stamp.fromNSec(image_ptr->GetTimeStamp() * 1000);
+        image->header.seq = image_ptr->GetFrameID();
 
         // Check the bits per pixel.
         size_t bitsPerPixel = image_ptr->GetBitsPerPixel();

@@ -103,9 +103,12 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       diagThread_->join();
     }
 
+    if (async_spinner_) {
+      async_spinner_->stop();
+    }
+
     if (pubThread_) {
       pubThread_->interrupt();
-      pubThread_->join();
 
       try {
         NODELET_DEBUG_ONCE("Stopping camera capture.");
@@ -401,15 +404,19 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
     // Here are the triggering settings.
     pnh.param("force_mavros_triggering", force_mavros_triggering_, false);
     trigger_sequence_offset_ = 0;
+    ROS_INFO("Force mavros triggering: %d", force_mavros_triggering_);
 
     // Set up all the stuff for mavros triggering.
     if (force_mavros_triggering_) {
+      // async_spinner_.reset(new ros::AsyncSpinner(1));
+      // async_spinner_->start();
+
       // First subscribe to the messages so we don't miss any.
       cam_imu_sub_ =
-          nh.subscribe("mavros/cam_imu_stamp", 100,
+          nh.subscribe("/mavros/cam_imu_sync/cam_imu_stamp", 100,
                        &SpinnakerCameraNodelet::camImuStampCallback, this);
 
-      const std::string mavros_trigger_service = "mavros/trigger_control";
+      const std::string mavros_trigger_service = "/mavros/cmd/trigger_control";
       if (ros::service::exists(mavros_trigger_service, false)) {
         mavros_msgs::CommandTriggerControl req;
         req.request.trigger_enable = true;
@@ -602,9 +609,12 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
             NODELET_DEBUG_ONCE(
                 "Starting a new grab from camera with serial {%d}.",
                 spinnaker_.getSerial());
+
             spinnaker_.grabImage(&wfov_image->image, frame_id_);
+
             ROS_INFO("Got an image at sequence %lu and timestamp %f",
-                     wfov_image->header.seq, wfov_image->header.stamp);
+                     wfov_image->image.header.seq,
+                     wfov_image->image.header.stamp.toSec());
 
             // Set other values
             wfov_image->header.frame_id = frame_id_;
@@ -618,6 +628,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
             ros::Time time = ros::Time::now();
             wfov_image->header.stamp = time;
             wfov_image->image.header.stamp = time;
+
 
             // Set the CameraInfo message
             ci_.reset(new sensor_msgs::CameraInfo(cinfo_->getCameraInfo()));
@@ -650,7 +661,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
 
           catch (std::runtime_error& e) {
             NODELET_ERROR("%s", e.what());
-            state = ERROR;
+            // state = ERROR;
           }
 
           break;
@@ -762,6 +773,8 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
   int32_t trigger_sequence_offset_;
   std::map<uint32_t, ros::Time> sequence_time_map_;
   ros::Subscriber cam_imu_sub_;
+
+  std::shared_ptr<ros::AsyncSpinner> async_spinner_;
 
   /// Configuration:
   spinnaker_camera_driver::SpinnakerConfig config_;
