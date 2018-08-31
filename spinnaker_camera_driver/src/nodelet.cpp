@@ -86,6 +86,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <fstream>
 #include <string>
 
+// For triggering from mavros
+#include <mavros_msgs/CamIMUStamp.h>
+#include <mavros_msgs/CommandTriggerControl.h>
+
 namespace spinnaker_camera_driver {
 class SpinnakerCameraNodelet : public nodelet::Nodelet {
  public:
@@ -393,6 +397,28 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
                             std::make_pair(0.4f, 0.6f), 0.3f, 1.0f);
     diag_man->addDiagnostic<int>("DeviceUptime");
     diag_man->addDiagnostic<int>("U3VMessageChannelID");
+
+    // Here are the triggering settings.
+    pnh.param("force_mavros_triggering", force_mavros_triggering_, false);
+    trigger_sequence_offset_ = 0;
+
+    // Set up all the stuff for mavros triggering.
+    if (force_mavros_triggering_) {
+      // First subscribe to the messages so we don't miss any.
+      cam_imu_sub_ =
+          nh.subscribe("mavros/cam_imu_stamp", 100,
+                       &SpinnakerCameraNodelet::camImuStampCallback, this);
+
+      const std::string mavros_trigger_service = "mavros/trigger_control";
+      if (ros::service::exists(mavros_trigger_service, false)) {
+        mavros_msgs::CommandTriggerControl req;
+        req.request.trigger_enable = true;
+        req.request.integration_time = 0.0;  //???
+        ros::service::call(mavros_trigger_service, req);
+        ROS_INFO("Called mavros trigger service! Success? %d Result? %d",
+                 req.response.success, req.response.result);
+      }
+    }
   }
 
   /**
@@ -654,6 +680,14 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
     }
   }
 
+  void camImuStampCallback(const mavros_msgs::CamIMUStamp& cam_imu_stamp) {
+    sequence_time_map_[cam_imu_stamp.frame_seq_id] = cam_imu_stamp.frame_stamp;
+    ROS_INFO(
+        "[Cam Imu Sync] Received a new stamp for sequence number: %ld with "
+        "stamp: %f",
+        cam_imu_stamp.frame_seq_id, cam_imu_stamp.frame_stamp.toSec());
+  }
+
   /* Class Fields */
   std::shared_ptr<
       dynamic_reconfigure::Server<spinnaker_camera_driver::SpinnakerConfig> >
@@ -685,7 +719,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
   double max_freq_;
 
   SpinnakerCamera spinnaker_;      ///< Instance of the SpinnakerCamera library,
-                                   ///used to interface with the hardware.
+                                   /// used to interface with the hardware.
   sensor_msgs::CameraInfoPtr ci_;  ///< Camera Info message.
   std::string
       frame_id_;  ///< Frame id for the camera messages, defaults to 'camera'
@@ -708,8 +742,8 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
   size_t roi_height_;    ///< Camera Info ROI height
   size_t roi_width_;     ///< Camera Info ROI width
   bool do_rectify_;  ///< Whether or not to rectify as if part of an image.  Set
-                     ///to false if whole image, and true if in
-                     /// ROI mode.
+                     /// to false if whole image, and true if in
+  /// ROI mode.
 
   // For GigE cameras:
   /// If true, GigE packet size is automatically determined, otherwise
@@ -719,6 +753,13 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
   int packet_size_;
   /// GigE packet delay:
   int packet_delay_;
+
+  // Triggering options.
+  bool force_mavros_triggering_;
+  // Offset between sequence numbers from the camera and from mavros.
+  int32_t trigger_sequence_offset_;
+  std::map<uint32_t, ros::Time> sequence_time_map_;
+  ros::Subscriber cam_imu_sub_;
 
   /// Configuration:
   spinnaker_camera_driver::SpinnakerConfig config_;
