@@ -603,6 +603,8 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
                 "Starting a new grab from camera with serial {%d}.",
                 spinnaker_.getSerial());
             spinnaker_.grabImage(&wfov_image->image, frame_id_);
+            ROS_INFO("Got an image at sequence %lu and timestamp %f",
+                     wfov_image->header.seq, wfov_image->header.stamp);
 
             // Set other values
             wfov_image->header.frame_id = frame_id_;
