@@ -330,8 +330,8 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
         boost::bind(
             &spinnaker_camera_driver::SpinnakerCameraNodelet::paramCallback,
             this, _1, _2);
-
     srv_->setCallback(f);
+    srv_->getConfigDefault(config_);
 
     // Start the camera info manager and attempt to load any configurations
     std::stringstream cinfo_name;
@@ -404,24 +404,36 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
 
     // Set up all the stuff for mavros triggering.
     if (force_mavros_triggering_) {
-      // First subscribe to the messages so we don't miss any.
-      cam_imu_sub_ =
-          nh.subscribe("/mavros/cam_imu_sync/cam_imu_stamp", 100,
-                       &SpinnakerCameraNodelet::camImuStampCallback, this);
-      first_image_ = true;
-      const std::string mavros_trigger_service = "/mavros/cmd/trigger_control";
-      if (ros::service::exists(mavros_trigger_service, false)) {
-        mavros_msgs::CommandTriggerControl req;
-        // req.request.trigger_enable = false;
-        // req.request.integration_time = 0.0;  //???
-        // ros::service::call(mavros_trigger_service, req);
-        req.request.trigger_enable = true;
+      setupMavrosTriggering(nh);
+    }
+  }
 
-        ros::service::call(mavros_trigger_service, req);
+  void setupMavrosTriggering(ros::NodeHandle& nh) {
+    // First subscribe to the messages so we don't miss any.
+    cam_imu_sub_ =
+        nh.subscribe("/mavros/cam_imu_sync/cam_imu_stamp", 100,
+                     &SpinnakerCameraNodelet::camImuStampCallback, this);
+    first_image_ = true;
 
-        ROS_INFO("Called mavros trigger service! Success? %d Result? %d",
-                 req.response.success, req.response.result);
-      }
+    // Set up the camera to listen to triggers.
+    config_.enable_trigger = "On";
+    config_.trigger_activation_mode = "RisingEdge";
+    config_.trigger_source = "Line3";
+    paramCallback(config_, 0);
+    srv_->updateConfig(config_);
+
+    const std::string mavros_trigger_service = "/mavros/cmd/trigger_control";
+    if (ros::service::exists(mavros_trigger_service, false)) {
+      mavros_msgs::CommandTriggerControl req;
+      // req.request.trigger_enable = false;
+      // req.request.integration_time = 0.0;  //???
+      // ros::service::call(mavros_trigger_service, req);
+      req.request.trigger_enable = true;
+
+      ros::service::call(mavros_trigger_service, req);
+
+      ROS_INFO("Called mavros trigger service! Success? %d Result? %d",
+               req.response.success, req.response.result);
     }
   }
 
@@ -705,8 +717,8 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
         "stamp: %f",
         cam_imu_stamp.frame_seq_id, cam_imu_stamp.frame_stamp.toSec());
 
-    if (image_queue_ &&
-        lookupSequenceStamp(image_queue_->header, &image_queue_->header.stamp)) {
+    if (image_queue_ && lookupSequenceStamp(image_queue_->header,
+                                            &image_queue_->header.stamp)) {
       if (it_pub_.getNumSubscribers() > 0) {
         it_pub_.publish(image_queue_, ci_);
       }
@@ -733,12 +745,14 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
     if (it == sequence_time_map_.end()) {
       return false;
     }
-    *timestamp = it->second;
-    sequence_time_map_.erase(it);
 
     ROS_INFO("Remapped seq %d to %d, %f to %f", header.seq,
              header.seq + trigger_sequence_offset_, header.stamp.toSec(),
              it->second.toSec());
+
+    *timestamp = it->second;
+    sequence_time_map_.erase(it);
+
     return true;
   }
 
