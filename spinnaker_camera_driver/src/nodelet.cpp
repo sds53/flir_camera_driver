@@ -767,7 +767,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
 
   ros::Time shiftTimestampToMidExposure(const ros::Time& stamp,
                                         double exposure_us) {
-    ros::Time new_stamp = stamp + ros::Duration(exposure_us * 1e-6);
+    ros::Time new_stamp = stamp + ros::Duration(exposure_us * 1e-6 / 2.0);
     return new_stamp;
   }
 
