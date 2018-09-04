@@ -616,7 +616,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
           }
 
           try {
-            sensor_msgs::Image::Ptr image;
+            sensor_msgs::Image::Ptr image(new sensor_msgs::Image);
             // Get the image from the camera library
             NODELET_DEBUG_ONCE(
                 "Starting a new grab from camera with serial {%d}.",
