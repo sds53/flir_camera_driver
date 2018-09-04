@@ -239,7 +239,7 @@ void SpinnakerCamera::connect() {
       }
 
       // Configure chunk data - Enable Metadata
-      // SpinnakerCamera::ConfigureChunkData(*node_map_);
+      SpinnakerCamera::ConfigureChunkData(*node_map_);
     } catch (const Spinnaker::Exception& e) {
       throw std::runtime_error(
           "[SpinnakerCamera::connect] Failed to connect to camera. Error: " +
