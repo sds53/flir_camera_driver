@@ -421,7 +421,6 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
 
   void startMavrosTriggering() {
     // First subscribe to the messages so we don't miss any.'
-    ros::NodeHandle& nh = getMTNodeHandle();
     sequence_time_map_.clear();
     trigger_sequence_offset_ = 0;
 
@@ -614,7 +613,8 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
           } else if (force_mavros_triggering_ && triggering_started_ &&
                      trigger_sequence_offset_ > 20) {
             ROS_ERROR(
-                "Trigger sequence offset is too high at %d, "
+                "[Mavros Triggering] Trigger sequence offset is too high at "
+                "%d, "
                 "re-starting triggering.",
                 trigger_sequence_offset_);
             startMavrosTriggering();
@@ -631,8 +631,8 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
             double exposure_us = spinnaker_.getLastExposure();
 
             ROS_DEBUG(
-                "Got an image at sequence %lu and timestamp %f, exposure_us: "
-                "%f",
+                "[Mavros Triggering] Got an image at sequence %lu and "
+                "timestamp %f, exposure_us: %f",
                 image->header.seq, image->header.stamp.toSec(), exposure_us);
 
             bool should_publish = true;
@@ -745,7 +745,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       return false;
     }
 
-    ROS_DEBUG("Remapped seq %d to %d, %f to %f", header.seq,
+    ROS_DEBUG("[Mavros Triggering] Remapped seq %d to %d, %f to %f", header.seq,
               header.seq + trigger_sequence_offset_, header.stamp.toSec(),
               it->second.toSec());
 
