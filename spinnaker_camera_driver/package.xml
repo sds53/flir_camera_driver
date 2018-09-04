@@ -44,8 +44,6 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
   <depend>roscpp</depend>
   <depend>nodelet</depend>
   <depend>sensor_msgs</depend>
-  <depend>wfov_camera_msgs</depend>
-  <depend>image_exposure_msgs</depend>
   <depend>camera_info_manager</depend>
   <depend>image_transport</depend>
   <depend>dynamic_reconfigure</depend>

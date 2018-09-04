@@ -7,9 +7,7 @@ project(spinnaker_camera_driver)
 
 find_package(catkin REQUIRED COMPONENTS
   camera_info_manager diagnostic_updater dynamic_reconfigure
-  image_exposure_msgs image_transport nodelet roscpp sensor_msgs
-  wfov_camera_msgs
-)
+  image_transport nodelet roscpp sensor_msgs)
 
 find_package(OpenCV REQUIRED)
 
@@ -18,7 +16,7 @@ generate_dynamic_reconfigure_options(
 )
 
 catkin_package(CATKIN_DEPENDS
-  image_exposure_msgs nodelet roscpp sensor_msgs wfov_camera_msgs
+  nodelet roscpp sensor_msgs
   DEPENDS OpenCV
 )
 

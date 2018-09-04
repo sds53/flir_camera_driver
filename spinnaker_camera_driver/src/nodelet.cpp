@@ -73,9 +73,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <image_transport/image_transport.h>  // ROS library that allows sending compressed images
 #include <sensor_msgs/CameraInfo.h>  // ROS message header for CameraInfo
 
-#include <image_exposure_msgs/ExposureSequence.h>  // Message type for configuring gain and white balance.
-#include <wfov_camera_msgs/WFOVImage.h>
-
 #include <diagnostic_updater/diagnostic_updater.h>  // Headers for publishing diagnostic messages.
 #include <diagnostic_updater/publisher.h>
 
@@ -369,13 +366,6 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
     pnh.param<double>("max_acceptable_delay", max_acceptable, 0.2);
     ros::SubscriberStatusCallback cb2 =
         boost::bind(&SpinnakerCameraNodelet::connectCb, this);
-    pub_.reset(
-        new diagnostic_updater::DiagnosedPublisher<wfov_camera_msgs::WFOVImage>(
-            nh.advertise<wfov_camera_msgs::WFOVImage>("image", 5, cb2, cb2),
-            updater_, diagnostic_updater::FrequencyStatusParam(
-                          &min_freq_, &max_freq_, freq_tolerance, window_size),
-            diagnostic_updater::TimeStampStatusParam(min_acceptable,
-                                                     max_acceptable)));
 
     // Set up diagnostics aggregator publisher and diagnostics manager
     ros::SubscriberStatusCallback diag_cb =
@@ -583,16 +573,6 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
               NODELET_ERROR("%s", e.what());
             }
 
-            // Subscribe to gain and white balance changes
-            {
-              std::lock_guard<std::mutex> scopedLock(connect_mutex_);
-              sub_ = getMTNodeHandle().subscribe(
-                  "image_exposure_sequence", 10,
-                  &spinnaker_camera_driver::SpinnakerCameraNodelet::
-                      gainWBCallback,
-                  this);
-            }
-
             state = CONNECTED;
           } catch (const std::runtime_error& e) {
             if (state_changed) {
@@ -636,52 +616,39 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
           }
 
           try {
-            wfov_camera_msgs::WFOVImagePtr wfov_image(
-                new wfov_camera_msgs::WFOVImage);
+            sensor_msgs::Image::Ptr image;
             // Get the image from the camera library
             NODELET_DEBUG_ONCE(
                 "Starting a new grab from camera with serial {%d}.",
                 spinnaker_.getSerial());
 
-            spinnaker_.grabImage(&wfov_image->image, frame_id_);
+            spinnaker_.grabImage(image.get(), frame_id_);
             double exposure = spinnaker_.getLastExposure();
 
             ROS_INFO(
                 "Got an image at sequence %lu and timestamp %f, exposure: %f",
-                wfov_image->image.header.seq,
-                wfov_image->image.header.stamp.toSec(), exposure);
+                image->header.seq, image->header.stamp.toSec(), exposure);
 
             bool should_publish = true;
             if (force_mavros_triggering_) {
-              if (!lookupSequenceStamp(wfov_image->image.header,
-                                       &wfov_image->image.header.stamp)) {
+              if (!lookupSequenceStamp(image->header, &image->header.stamp)) {
                 if (image_queue_) {
                   ROS_WARN(
                       "Overwriting image queue! Make sure you're getting "
                       "timestamps from mavros.");
                 }
-                image_queue_.reset(new sensor_msgs::Image(wfov_image->image));
+                image_queue_ = image;
                 should_publish = false;
               }
             }
 
             // Set other values
-            wfov_image->header.frame_id = frame_id_;
-
-            wfov_image->gain = gain_;
-            wfov_image->white_balance_blue = wb_blue_;
-            wfov_image->white_balance_red = wb_red_;
-
-            // wfov_image->temperature = spinnaker_.getCameraTemperature();
-
-            ros::Time time = ros::Time::now();
-            wfov_image->header.stamp = time;
-            wfov_image->image.header.stamp = time;
+            image->header.frame_id = frame_id_;
 
             // Set the CameraInfo message
             ci_.reset(new sensor_msgs::CameraInfo(cinfo_->getCameraInfo()));
-            ci_->header.stamp = wfov_image->image.header.stamp;
-            ci_->header.frame_id = wfov_image->header.frame_id;
+            ci_->header.stamp = image->header.stamp;
+            ci_->header.frame_id = image->header.frame_id;
             // The height, width, distortion model, and parameters are all
             // filled in by camera info manager.
             ci_->binning_x = binning_x_;
@@ -692,15 +659,8 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
             ci_->roi.width = roi_width_;
             ci_->roi.do_rectify = do_rectify_;
 
-            wfov_image->info = *ci_;
-
-            // Publish the full message
-            pub_->publish(wfov_image);
-
             // Publish the message using standard image transport
             if (should_publish) {
-              sensor_msgs::ImagePtr image(
-                  new sensor_msgs::Image(wfov_image->image));
               it_pub_.publish(image, ci_);
             }
           } catch (CameraTimeoutException& e) {
@@ -721,24 +681,6 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       updater_.update();
     }
     NODELET_DEBUG_ONCE("Leaving thread.");
-  }
-
-  void gainWBCallback(const image_exposure_msgs::ExposureSequence& msg) {
-    try {
-      NODELET_DEBUG_ONCE(
-          "Gain callback:  Setting gain to %f and white balances to %u, %u",
-          msg.gain, msg.white_balance_blue, msg.white_balance_red);
-      gain_ = msg.gain;
-
-      spinnaker_.setGain(static_cast<float>(gain_));
-      wb_blue_ = msg.white_balance_blue;
-      wb_red_ = msg.white_balance_red;
-
-      // TODO(mhosmar):
-      // spinnaker_.setBRWhiteBalance(false, wb_blue_, wb_red_);
-    } catch (std::runtime_error& e) {
-      NODELET_ERROR("gainWBCallback failed with error: %s", e.what());
-    }
   }
 
   void camImuStampCallback(const mavros_msgs::CamIMUStamp& cam_imu_stamp) {
@@ -811,9 +753,6 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
                /// CameraInfoManager in scope.
   image_transport::CameraPublisher
       it_pub_;  ///< CameraInfoManager ROS publisher
-  std::shared_ptr<
-      diagnostic_updater::DiagnosedPublisher<wfov_camera_msgs::WFOVImage> >
-      pub_;  ///< Diagnosed
   std::shared_ptr<ros::Publisher> diagnostics_pub_;
   /// publisher, has to be  a pointer because of constructor requirements
   ros::Subscriber sub_;  ///< Subscriber for gain and white balance changes.
