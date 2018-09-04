@@ -97,6 +97,8 @@ void Camera::setNewConfiguration(const SpinnakerConfig& config,
     setProperty(node_map_, "TriggerSelector", config.trigger_selector);
     setProperty(node_map_, "TriggerActivation", config.trigger_activation_mode);
     setProperty(node_map_, "TriggerMode", config.enable_trigger);
+    setProperty(node_map_, "TriggerDelay",
+                static_cast<float>(config.trigger_delay));
 
     setProperty(node_map_, "LineSelector", config.line_selector);
     setProperty(node_map_, "LineMode", config.line_mode);
