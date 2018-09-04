@@ -644,10 +644,12 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
                 spinnaker_.getSerial());
 
             spinnaker_.grabImage(&wfov_image->image, frame_id_);
+            double exposure = spinnaker_.getLastExposure();
 
-            ROS_INFO("Got an image at sequence %lu and timestamp %f",
-                     wfov_image->image.header.seq,
-                     wfov_image->image.header.stamp.toSec());
+            ROS_INFO(
+                "Got an image at sequence %lu and timestamp %f, exposure: %f",
+                wfov_image->image.header.seq,
+                wfov_image->image.header.stamp.toSec(), exposure);
 
             bool should_publish = true;
             if (force_mavros_triggering_) {

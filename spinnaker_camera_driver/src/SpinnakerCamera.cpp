@@ -328,6 +328,8 @@ void SpinnakerCamera::grabImage(sensor_msgs::Image* image,
             "[SpinnakerCamera::grabImage] Image received from camera " +
             std::to_string(serial_) + " is incomplete.");
       } else {
+        image_metadata_ = image_ptr->GetChunkData();
+
         // Set Image Time Stamp
         // API description is wrong, this is NOT nanoseconds.
         image->header.stamp.fromNSec(image_ptr->GetTimeStamp() * 1000);
@@ -422,6 +424,10 @@ void SpinnakerCamera::grabImage(sensor_msgs::Image* image,
         "[SpinnakerCamera::grabImage] Not connected to the camera.");
   }
 }  // end grabImage
+
+double SpinnakerCamera::getLastExposure() {
+  return image_metadata_.GetExposureTime();
+}
 
 void SpinnakerCamera::setTimeout(const double& timeout) {
   timeout_ = static_cast<uint64_t>(std::round(timeout * 1000));
