@@ -623,22 +623,28 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
                 spinnaker_.getSerial());
 
             spinnaker_.grabImage(image.get(), frame_id_);
-            double exposure = spinnaker_.getLastExposure();
+            double exposure_us = spinnaker_.getLastExposure();
 
             ROS_INFO(
-                "Got an image at sequence %lu and timestamp %f, exposure: %f",
-                image->header.seq, image->header.stamp.toSec(), exposure);
+                "Got an image at sequence %lu and timestamp %f, exposure_us: "
+                "%f",
+                image->header.seq, image->header.stamp.toSec(), exposure_us);
 
             bool should_publish = true;
             if (force_mavros_triggering_) {
-              if (!lookupSequenceStamp(image->header, &image->header.stamp)) {
+              ros::Time new_stamp;
+              if (!lookupSequenceStamp(image->header, &new_stamp)) {
                 if (image_queue_) {
                   ROS_WARN(
                       "Overwriting image queue! Make sure you're getting "
                       "timestamps from mavros.");
                 }
                 image_queue_ = image;
+                image_queue_exposure_us_ = exposure_us;
                 should_publish = false;
+              } else {
+                image->header.stamp =
+                    shiftTimestampToMidExposure(new_stamp, exposure_us);
               }
             }
 
@@ -695,9 +701,11 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
         "stamp: %f",
         cam_imu_stamp.frame_seq_id, cam_imu_stamp.frame_stamp.toSec());
     constexpr bool kFromImageQueue = true;
-    if (image_queue_ &&
-        lookupSequenceStamp(image_queue_->header, &image_queue_->header.stamp,
-                            kFromImageQueue)) {
+    ros::Time new_stamp;
+    if (image_queue_ && lookupSequenceStamp(image_queue_->header, &new_stamp,
+                                            kFromImageQueue)) {
+      image_queue_->header.stamp =
+          shiftTimestampToMidExposure(new_stamp, image_queue_exposure_us_);
       it_pub_.publish(image_queue_, ci_);
       image_queue_.reset();
       ROS_INFO("Publishing delayed image.");
@@ -735,6 +743,12 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
     sequence_time_map_.erase(it);
 
     return true;
+  }
+
+  ros::Time shiftTimestampToMidExposure(const ros::Time& stamp,
+                                        double exposure_us) {
+    ros::Time new_stamp = stamp + ros::Duration(exposure_us * 1e-6);
+    return new_stamp;
   }
 
   /* Class Fields */
@@ -808,6 +822,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
   ros::Subscriber cam_imu_sub_;
   // We assume this can NEVER be more than 1.
   sensor_msgs::ImagePtr image_queue_;
+  double image_queue_exposure_us_;
   bool first_image_;
   bool triggering_started_;
 
