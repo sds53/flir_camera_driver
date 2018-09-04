@@ -315,86 +315,90 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
     // Get the desired frame_id, set to 'camera' if not found
     pnh.param<std::string>("frame_id", frame_id_, "camera");
     // Do not call the connectCb function until after we are done initializing.
-    std::lock_guard<std::mutex> scopedLock(connect_mutex_);
+    {
+      std::lock_guard<std::mutex> scopedLock(connect_mutex_);
 
-    // Start up the dynamic_reconfigure service, note that this needs to stick
-    // around after this function ends
-    srv_ = std::make_shared<
-        dynamic_reconfigure::Server<spinnaker_camera_driver::SpinnakerConfig> >(
-        pnh);
-    dynamic_reconfigure::Server<
-        spinnaker_camera_driver::SpinnakerConfig>::CallbackType f =
-        boost::bind(
-            &spinnaker_camera_driver::SpinnakerCameraNodelet::paramCallback,
-            this, _1, _2);
-    srv_->setCallback(f);
-    srv_->getConfigDefault(config_);
+      // Start up the dynamic_reconfigure service, note that this needs to stick
+      // around after this function ends
+      srv_ = std::make_shared<dynamic_reconfigure::Server<
+          spinnaker_camera_driver::SpinnakerConfig> >(pnh);
+      dynamic_reconfigure::Server<
+          spinnaker_camera_driver::SpinnakerConfig>::CallbackType f =
+          boost::bind(
+              &spinnaker_camera_driver::SpinnakerCameraNodelet::paramCallback,
+              this, _1, _2);
+      srv_->setCallback(f);
+      srv_->getConfigDefault(config_);
 
-    // Start the camera info manager and attempt to load any configurations
-    std::stringstream cinfo_name;
-    cinfo_name << serial;
-    cinfo_.reset(new camera_info_manager::CameraInfoManager(
-        nh, cinfo_name.str(), camera_info_url));
+      // Start the camera info manager and attempt to load any configurations
+      std::stringstream cinfo_name;
+      cinfo_name << serial;
+      cinfo_.reset(new camera_info_manager::CameraInfoManager(
+          nh, cinfo_name.str(), camera_info_url));
 
-    // Publish topics using ImageTransport through camera_info_manager (gives
-    // cool things like compression)
-    it_.reset(new image_transport::ImageTransport(nh));
-    image_transport::SubscriberStatusCallback cb =
-        boost::bind(&SpinnakerCameraNodelet::connectCb, this);
-    it_pub_ = it_->advertiseCamera("image_raw", 5, cb, cb);
+      // Publish topics using ImageTransport through camera_info_manager (gives
+      // cool things like compression)
+      it_.reset(new image_transport::ImageTransport(nh));
+      // image_transport::SubscriberStatusCallback cb =
+      //    boost::bind(&SpinnakerCameraNodelet::connectCb, this);
+      it_pub_ = it_->advertiseCamera("image_raw", 5);
 
-    // Set up diagnostics
-    updater_.setHardwareID("spinnaker_camera " + cinfo_name.str());
+      // Set up diagnostics
+      updater_.setHardwareID("spinnaker_camera " + cinfo_name.str());
 
-    // Set up a diagnosed publisher
-    double desired_freq;
-    pnh.param<double>("desired_freq", desired_freq, 30.0);
-    pnh.param<double>("min_freq", min_freq_, desired_freq);
-    pnh.param<double>("max_freq", max_freq_, desired_freq);
-    double freq_tolerance;  // Tolerance before stating error on publish
-                            // frequency, fractional percent of desired
-                            // frequencies.
-    pnh.param<double>("freq_tolerance", freq_tolerance, 0.1);
-    int window_size;  // Number of samples to consider in frequency
-    pnh.param<int>("window_size", window_size, 100);
-    double min_acceptable;  // The minimum publishing delay (in seconds) before
-                            // warning.  Negative values mean future
-                            // dated messages.
-    pnh.param<double>("min_acceptable_delay", min_acceptable, 0.0);
-    double max_acceptable;  // The maximum publishing delay (in seconds) before
-                            // warning.
-    pnh.param<double>("max_acceptable_delay", max_acceptable, 0.2);
-    ros::SubscriberStatusCallback cb2 =
-        boost::bind(&SpinnakerCameraNodelet::connectCb, this);
+      // Set up a diagnosed publisher
+      double desired_freq;
+      pnh.param<double>("desired_freq", desired_freq, 30.0);
+      pnh.param<double>("min_freq", min_freq_, desired_freq);
+      pnh.param<double>("max_freq", max_freq_, desired_freq);
+      double freq_tolerance;  // Tolerance before stating error on publish
+                              // frequency, fractional percent of desired
+                              // frequencies.
+      pnh.param<double>("freq_tolerance", freq_tolerance, 0.1);
+      int window_size;  // Number of samples to consider in frequency
+      pnh.param<int>("window_size", window_size, 100);
+      double
+          min_acceptable;  // The minimum publishing delay (in seconds) before
+                           // warning.  Negative values mean future
+                           // dated messages.
+      pnh.param<double>("min_acceptable_delay", min_acceptable, 0.0);
+      double
+          max_acceptable;  // The maximum publishing delay (in seconds) before
+                           // warning.
+      pnh.param<double>("max_acceptable_delay", max_acceptable, 0.2);
+      ros::SubscriberStatusCallback cb2 =
+          boost::bind(&SpinnakerCameraNodelet::connectCb, this);
 
-    // Set up diagnostics aggregator publisher and diagnostics manager
-    ros::SubscriberStatusCallback diag_cb =
-        boost::bind(&SpinnakerCameraNodelet::diagCb, this);
-    diagnostics_pub_.reset(
-        new ros::Publisher(nh.advertise<diagnostic_msgs::DiagnosticArray>(
-            "/diagnostics", 1, diag_cb, diag_cb)));
+      // Set up diagnostics aggregator publisher and diagnostics manager
+      ros::SubscriberStatusCallback diag_cb =
+          boost::bind(&SpinnakerCameraNodelet::diagCb, this);
+      diagnostics_pub_.reset(
+          new ros::Publisher(nh.advertise<diagnostic_msgs::DiagnosticArray>(
+              "/diagnostics", 1, diag_cb, diag_cb)));
 
-    diag_man = std::unique_ptr<DiagnosticsManager>(new DiagnosticsManager(
-        frame_id_, std::to_string(spinnaker_.getSerial()), diagnostics_pub_));
-    diag_man->addDiagnostic("DeviceTemperature", true,
-                            std::make_pair(0.0f, 90.0f), -10.0f, 95.0f);
-    diag_man->addDiagnostic("AcquisitionResultingFrameRate", true,
-                            std::make_pair(10.0f, 60.0f), 5.0f, 90.0f);
-    diag_man->addDiagnostic("PowerSupplyVoltage", true,
-                            std::make_pair(4.5f, 5.2f), 4.4f, 5.3f);
-    diag_man->addDiagnostic("PowerSupplyCurrent", true,
-                            std::make_pair(0.4f, 0.6f), 0.3f, 1.0f);
-    diag_man->addDiagnostic<int>("DeviceUptime");
-    diag_man->addDiagnostic<int>("U3VMessageChannelID");
+      diag_man = std::unique_ptr<DiagnosticsManager>(new DiagnosticsManager(
+          frame_id_, std::to_string(spinnaker_.getSerial()), diagnostics_pub_));
+      diag_man->addDiagnostic("DeviceTemperature", true,
+                              std::make_pair(0.0f, 90.0f), -10.0f, 95.0f);
+      diag_man->addDiagnostic("AcquisitionResultingFrameRate", true,
+                              std::make_pair(10.0f, 60.0f), 5.0f, 90.0f);
+      diag_man->addDiagnostic("PowerSupplyVoltage", true,
+                              std::make_pair(4.5f, 5.2f), 4.4f, 5.3f);
+      diag_man->addDiagnostic("PowerSupplyCurrent", true,
+                              std::make_pair(0.4f, 0.6f), 0.3f, 1.0f);
+      diag_man->addDiagnostic<int>("DeviceUptime");
+      diag_man->addDiagnostic<int>("U3VMessageChannelID");
 
-    // Here are the triggering settings.
-    pnh.param("force_mavros_triggering", force_mavros_triggering_, false);
-    ROS_INFO("Force mavros triggering: %d", force_mavros_triggering_);
+      // Here are the triggering settings.
+      pnh.param("force_mavros_triggering", force_mavros_triggering_, false);
+      ROS_INFO("Force mavros triggering: %d", force_mavros_triggering_);
 
-    // Set up all the stuff for mavros triggering.
-    if (force_mavros_triggering_) {
-      setupMavrosTriggering();
+      // Set up all the stuff for mavros triggering.
+      if (force_mavros_triggering_) {
+        setupMavrosTriggering();
+      }
     }
+    connectCb();
   }
 
   void setupMavrosTriggering() {
@@ -611,7 +615,8 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
                      trigger_sequence_offset_ > 20) {
             ROS_ERROR(
                 "Trigger sequence offset is too high at %d, "
-                "re-starting triggering.");
+                "re-starting triggering.",
+                trigger_sequence_offset_);
             startMavrosTriggering();
           }
 
@@ -725,8 +730,11 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       int32_t mavros_sequence = it->first;
       trigger_sequence_offset_ =
           mavros_sequence - static_cast<int32_t>(header.seq);
-      ROS_DEBUG("New header offset: %d, from %d to %d",
-                trigger_sequence_offset_, it->first, header.seq);
+      ROS_INFO(
+          "[Mavros Triggering] New header offset: %d, from %d to %d, timestamp "
+          "correction: %f seconds.",
+          trigger_sequence_offset_, it->first, header.seq,
+          it->second.toSec() - header.stamp.toSec());
       *timestamp = it->second;
       first_image_ = false;
       sequence_time_map_.erase(it);
@@ -740,6 +748,16 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
     ROS_DEBUG("Remapped seq %d to %d, %f to %f", header.seq,
               header.seq + trigger_sequence_offset_, header.stamp.toSec(),
               it->second.toSec());
+
+    const double kMinExpectedDelay = 0.0;
+    const double kMaxExpectedDelay = 40.0 * 1e-3;
+    double delay = header.stamp.toSec() - it->second.toSec();
+    if (delay < kMinExpectedDelay || delay > kMaxExpectedDelay) {
+      ROS_ERROR(
+          "[Mavros Triggering] Delay out of bounds! Actual delay: %f s, min: "
+          "%f s max: %f s",
+          delay, kMinExpectedDelay, kMaxExpectedDelay);
+    }
 
     *timestamp = it->second;
     sequence_time_map_.erase(it);

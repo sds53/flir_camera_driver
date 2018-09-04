@@ -6,7 +6,7 @@
   <arg name="calibrated" default="0" />
 
   <group ns="$(arg camera_name)">
-    <node name="spinnaker_camera_node" pkg="spinnaker_camera_driver" type="camera_node" clear_params="true">
+    <node name="spinnaker_camera_node" pkg="spinnaker_camera_driver" type="camera_node" clear_params="true" output="screen" >
       <param name="force_mavros_triggering" value="true" />
     </node>
   </group>
