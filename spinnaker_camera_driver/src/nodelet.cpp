@@ -755,8 +755,9 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
     if (delay < kMinExpectedDelay || delay > kMaxExpectedDelay) {
       ROS_ERROR(
           "[Mavros Triggering] Delay out of bounds! Actual delay: %f s, min: "
-          "%f s max: %f s",
+          "%f s max: %f s. Resetting triggering on next image.",
           delay, kMinExpectedDelay, kMaxExpectedDelay);
+      triggering_started_ = false;
     }
 
     *timestamp = it->second;
