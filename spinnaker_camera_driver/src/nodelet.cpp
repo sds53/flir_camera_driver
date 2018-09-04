@@ -625,7 +625,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
             spinnaker_.grabImage(image.get(), frame_id_);
             double exposure_us = spinnaker_.getLastExposure();
 
-            ROS_INFO(
+            ROS_DEBUG(
                 "Got an image at sequence %lu and timestamp %f, exposure_us: "
                 "%f",
                 image->header.seq, image->header.stamp.toSec(), exposure_us);
@@ -635,9 +635,11 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
               ros::Time new_stamp;
               if (!lookupSequenceStamp(image->header, &new_stamp)) {
                 if (image_queue_) {
-                  ROS_WARN(
+                  ROS_WARN_THROTTLE(
+                      60,
                       "Overwriting image queue! Make sure you're getting "
-                      "timestamps from mavros.");
+                      "timestamps from mavros. This message will only print "
+                      "once a minute.");
                 }
                 image_queue_ = image;
                 image_queue_exposure_us_ = exposure_us;
@@ -696,7 +698,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       return;
     }
     sequence_time_map_[cam_imu_stamp.frame_seq_id] = cam_imu_stamp.frame_stamp;
-    ROS_INFO(
+    ROS_DEBUG(
         "[Cam Imu Sync] Received a new stamp for sequence number: %ld with "
         "stamp: %f",
         cam_imu_stamp.frame_seq_id, cam_imu_stamp.frame_stamp.toSec());
@@ -708,7 +710,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
           shiftTimestampToMidExposure(new_stamp, image_queue_exposure_us_);
       it_pub_.publish(image_queue_, ci_);
       image_queue_.reset();
-      ROS_INFO("Publishing delayed image.");
+      ROS_WARN_THROTTLE(60, "Publishing delayed image.");
     }
   }
 
@@ -723,8 +725,8 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       int32_t mavros_sequence = it->first;
       trigger_sequence_offset_ =
           mavros_sequence - static_cast<int32_t>(header.seq);
-      ROS_INFO("New header offset: %d, from %d to %d", trigger_sequence_offset_,
-               it->first, header.seq);
+      ROS_DEBUG("New header offset: %d, from %d to %d",
+                trigger_sequence_offset_, it->first, header.seq);
       *timestamp = it->second;
       first_image_ = false;
       sequence_time_map_.erase(it);
@@ -735,9 +737,9 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       return false;
     }
 
-    ROS_INFO("Remapped seq %d to %d, %f to %f", header.seq,
-             header.seq + trigger_sequence_offset_, header.stamp.toSec(),
-             it->second.toSec());
+    ROS_DEBUG("Remapped seq %d to %d, %f to %f", header.seq,
+              header.seq + trigger_sequence_offset_, header.stamp.toSec(),
+              it->second.toSec());
 
     *timestamp = it->second;
     sequence_time_map_.erase(it);
