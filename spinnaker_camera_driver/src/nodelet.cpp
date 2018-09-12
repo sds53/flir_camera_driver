@@ -339,8 +339,6 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       // Publish topics using ImageTransport through camera_info_manager (gives
       // cool things like compression)
       it_.reset(new image_transport::ImageTransport(nh));
-      // image_transport::SubscriberStatusCallback cb =
-      //    boost::bind(&SpinnakerCameraNodelet::connectCb, this);
       it_pub_ = it_->advertiseCamera("image_raw", 5);
 
       // Set up diagnostics
@@ -682,7 +680,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
 
           catch (std::runtime_error& e) {
             NODELET_ERROR("%s", e.what());
-            // state = ERROR;
+            state = ERROR;
           }
 
           break;
