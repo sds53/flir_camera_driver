@@ -239,7 +239,7 @@ void SpinnakerCamera::connect() {
       }
 
       // Configure chunk data - Enable Metadata
-      // SpinnakerCamera::ConfigureChunkData(*node_map_);
+      SpinnakerCamera::ConfigureChunkData(*node_map_);
     } catch (const Spinnaker::Exception& e) {
       throw std::runtime_error(
           "[SpinnakerCamera::connect] Failed to connect to camera. Error: " +
@@ -328,9 +328,12 @@ void SpinnakerCamera::grabImage(sensor_msgs::Image* image,
             "[SpinnakerCamera::grabImage] Image received from camera " +
             std::to_string(serial_) + " is incomplete.");
       } else {
+        image_metadata_ = image_ptr->GetChunkData();
+
         // Set Image Time Stamp
-        image->header.stamp.sec = image_ptr->GetTimeStamp() * 1e-9;
-        image->header.stamp.nsec = image_ptr->GetTimeStamp();
+        // API description is wrong, this is NOT nanoseconds.
+        image->header.stamp.fromNSec(image_ptr->GetTimeStamp() * 1000);
+        image->header.seq = image_ptr->GetFrameID();
 
         // Check the bits per pixel.
         size_t bitsPerPixel = image_ptr->GetBitsPerPixel();
@@ -421,6 +424,10 @@ void SpinnakerCamera::grabImage(sensor_msgs::Image* image,
         "[SpinnakerCamera::grabImage] Not connected to the camera.");
   }
 }  // end grabImage
+
+double SpinnakerCamera::getLastExposure() {
+  return image_metadata_.GetExposureTime();
+}
 
 void SpinnakerCamera::setTimeout(const double& timeout) {
   timeout_ = static_cast<uint64_t>(std::round(timeout * 1000));
