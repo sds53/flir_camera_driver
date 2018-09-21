@@ -328,7 +328,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
               &spinnaker_camera_driver::SpinnakerCameraNodelet::paramCallback,
               this, _1, _2);
       srv_->setCallback(f);
-      srv_->getConfigDefault(config_);
+      srv_->getConfig(config_);
 
       // Start the camera info manager and attempt to load any configurations
       std::stringstream cinfo_name;
