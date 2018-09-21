@@ -328,7 +328,6 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
               &spinnaker_camera_driver::SpinnakerCameraNodelet::paramCallback,
               this, _1, _2);
       srv_->setCallback(f);
-      srv_->getConfig(config_);
 
       // Start the camera info manager and attempt to load any configurations
       std::stringstream cinfo_name;
@@ -429,7 +428,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       mavros_msgs::CommandTriggerControl req;
       req.request.trigger_enable = true;
       // This is NOT integration time, this is actually the sequence reset.
-      req.request.integration_time = 1.0;
+      req.request.cycle_time = 1.0;
 
       ros::service::call(mavros_trigger_service, req);
 
