@@ -391,6 +391,9 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       // Here are the triggering settings.
       pnh.param("force_mavros_triggering", force_mavros_triggering_, false);
       ROS_INFO("Force mavros triggering: %d", force_mavros_triggering_);
+      double imu_time_offset_s;
+      pnh.param("imu_time_offset_s", imu_time_offset_s, 0.0);
+      imu_time_offset_ = ros::Duration(imu_time_offset_s);
 
       // Set up all the stuff for mavros triggering.
       if (force_mavros_triggering_) {
@@ -651,6 +654,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
               } else {
                 image->header.stamp =
                     shiftTimestampToMidExposure(new_stamp, exposure_us);
+                image->header.stamp += imu_time_offset_;
               }
             }
 
@@ -712,6 +716,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
                                             kFromImageQueue)) {
       image_queue_->header.stamp =
           shiftTimestampToMidExposure(new_stamp, image_queue_exposure_us_);
+      image_queue_->header.stamp += imu_time_offset_;
       it_pub_.publish(image_queue_, ci_);
       image_queue_.reset();
       ROS_WARN_THROTTLE(60, "Publishing delayed image.");
@@ -846,6 +851,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
   double image_queue_exposure_us_;
   bool first_image_;
   bool triggering_started_;
+  ros::Duration imu_time_offset_;
 
   /// Configuration:
   spinnaker_camera_driver::SpinnakerConfig config_;
