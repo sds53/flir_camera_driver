@@ -756,6 +756,8 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
           "[Mavros Triggering] Delay out of bounds! Actual delay: %f s, min: "
           "%f s max: %f s",
           delay, kMinExpectedDelay, kMaxExpectedDelay);
+      startMavrosTriggering();
+      return false;
     }
 
     *timestamp = it->second;
