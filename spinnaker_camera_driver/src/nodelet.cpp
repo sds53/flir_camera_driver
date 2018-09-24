@@ -328,7 +328,6 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
               &spinnaker_camera_driver::SpinnakerCameraNodelet::paramCallback,
               this, _1, _2);
       srv_->setCallback(f);
-      srv_->getConfigDefault(config_);
 
       // Start the camera info manager and attempt to load any configurations
       std::stringstream cinfo_name;
@@ -390,6 +389,9 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       // Here are the triggering settings.
       pnh.param("force_mavros_triggering", force_mavros_triggering_, false);
       ROS_INFO("Force mavros triggering: %d", force_mavros_triggering_);
+      double imu_time_offset_s;
+      pnh.param("imu_time_offset_s", imu_time_offset_s, 0.0);
+      imu_time_offset_ = ros::Duration(imu_time_offset_s);
 
       // Set up all the stuff for mavros triggering.
       if (force_mavros_triggering_) {
@@ -413,7 +415,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
 
     ros::NodeHandle& nh = getMTNodeHandle();
     cam_imu_sub_ =
-        nh.subscribe("/mavros/cam_imu_sync/cam_imu_stamp", 100,
+        nh.subscribe("mavros/cam_imu_sync/cam_imu_stamp", 100,
                      &SpinnakerCameraNodelet::camImuStampCallback, this);
   }
 
@@ -422,12 +424,12 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
     sequence_time_map_.clear();
     trigger_sequence_offset_ = 0;
 
-    const std::string mavros_trigger_service = "/mavros/cmd/trigger_control";
+    const std::string mavros_trigger_service = "mavros/cmd/trigger_control";
     if (ros::service::exists(mavros_trigger_service, false)) {
       mavros_msgs::CommandTriggerControl req;
       req.request.trigger_enable = true;
       // This is NOT integration time, this is actually the sequence reset.
-      req.request.integration_time = 1.0;
+      req.request.cycle_time = 1.0;
 
       ros::service::call(mavros_trigger_service, req);
 
@@ -650,6 +652,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
               } else {
                 image->header.stamp =
                     shiftTimestampToMidExposure(new_stamp, exposure_us);
+                image->header.stamp += imu_time_offset_;
               }
             }
 
@@ -711,6 +714,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
                                             kFromImageQueue)) {
       image_queue_->header.stamp =
           shiftTimestampToMidExposure(new_stamp, image_queue_exposure_us_);
+      image_queue_->header.stamp += imu_time_offset_;
       it_pub_.publish(image_queue_, ci_);
       image_queue_.reset();
       ROS_WARN_THROTTLE(60, "Publishing delayed image.");
@@ -844,6 +848,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
   double image_queue_exposure_us_;
   bool first_image_;
   bool triggering_started_;
+  ros::Duration imu_time_offset_;
 
   /// Configuration:
   spinnaker_camera_driver::SpinnakerConfig config_;
