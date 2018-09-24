@@ -163,7 +163,7 @@ class SpinnakerCamera {
   */
   void grabImage(sensor_msgs::Image* image, const std::string& frame_id);
 
-  // Gets the exposure of the last image, in seconds (?)
+  // Gets the exposure of the last image, in microseconds.
   double getLastExposure();
 
   /*!
