@@ -116,17 +116,17 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
 
  private:
   /*!
-  * \brief Function that allows reconfiguration of the camera.
-  *
-  * This function serves as a callback for the dynamic reconfigure service.  It
-  * simply passes the configuration object
-  * to the driver to allow the camera to reconfigure.
-  * \param config  camera_library::CameraConfig object passed by reference.
-  * Values will be changed to those the driver
-  * is currently using.
-  * \param level driver_base reconfiguration level.  See
-  * driver_base/SensorLevels.h for more information.
-  */
+   * \brief Function that allows reconfiguration of the camera.
+   *
+   * This function serves as a callback for the dynamic reconfigure service.  It
+   * simply passes the configuration object
+   * to the driver to allow the camera to reconfigure.
+   * \param config  camera_library::CameraConfig object passed by reference.
+   * Values will be changed to those the driver
+   * is currently using.
+   * \param level driver_base reconfiguration level.  See
+   * driver_base/SensorLevels.h for more information.
+   */
 
   void paramCallback(const spinnaker_camera_driver::SpinnakerConfig& config,
                      uint32_t level) {
@@ -185,11 +185,11 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
   }
 
   /*!
-  * \brief Connection callback to only do work when someone is listening.
-  *
-  * This function will connect/disconnect from the camera depending on who is
-  * using the output.
-  */
+   * \brief Connection callback to only do work when someone is listening.
+   *
+   * This function will connect/disconnect from the camera depending on who is
+   * using the output.
+   */
   void connectCb() {
     if (!pubThread_)  // We need to connect
     {
@@ -255,12 +255,12 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
   }
 
   /*!
-  * \brief Serves as a psuedo constructor for nodelets.
-  *
-  * This function needs to do the MINIMUM amount of work to get the nodelet
-  * running.  Nodelets should not call blocking
-  * functions here.
-  */
+   * \brief Serves as a psuedo constructor for nodelets.
+   *
+   * This function needs to do the MINIMUM amount of work to get the nodelet
+   * running.  Nodelets should not call blocking
+   * functions here.
+   */
   void onInit() {
     // Get nodeHandles
     ros::NodeHandle& nh = getMTNodeHandle();
@@ -354,14 +354,12 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       pnh.param<double>("freq_tolerance", freq_tolerance, 0.1);
       int window_size;  // Number of samples to consider in frequency
       pnh.param<int>("window_size", window_size, 100);
-      double
-          min_acceptable;  // The minimum publishing delay (in seconds) before
-                           // warning.  Negative values mean future
-                           // dated messages.
+      double min_acceptable;  // The minimum publishing delay (in seconds)
+                              // before warning.  Negative values mean future
+                              // dated messages.
       pnh.param<double>("min_acceptable_delay", min_acceptable, 0.0);
-      double
-          max_acceptable;  // The maximum publishing delay (in seconds) before
-                           // warning.
+      double max_acceptable;  // The maximum publishing delay (in seconds)
+                              // before warning.
       pnh.param<double>("max_acceptable_delay", max_acceptable, 0.2);
       ros::SubscriberStatusCallback cb2 =
           boost::bind(&SpinnakerCameraNodelet::connectCb, this);
@@ -392,6 +390,9 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       double imu_time_offset_s;
       pnh.param("imu_time_offset_s", imu_time_offset_s, 0.0);
       imu_time_offset_ = ros::Duration(imu_time_offset_s);
+
+      // prevents it trying to sync up the timestamp count
+      pnh.param("multi_camera_mode", multi_camera_mode_, false);
 
       // Set up all the stuff for mavros triggering.
       if (force_mavros_triggering_) {
@@ -424,19 +425,21 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
     sequence_time_map_.clear();
     trigger_sequence_offset_ = 0;
 
-    const std::string mavros_trigger_service = "mavros/cmd/trigger_control";
-    if (ros::service::exists(mavros_trigger_service, false)) {
-      mavros_msgs::CommandTriggerControl req;
-      req.request.trigger_enable = true;
-      // This is NOT integration time, this is actually the sequence reset.
-      req.request.cycle_time = 1.0;
+    if (!multi_camera_mode_) {
+      const std::string mavros_trigger_service = "mavros/cmd/trigger_control";
+      if (ros::service::exists(mavros_trigger_service, false)) {
+        mavros_msgs::CommandTriggerControl req;
+        req.request.trigger_enable = true;
+        // This is NOT integration time, this is actually the sequence reset.
+        req.request.cycle_time = 1.0;
 
-      ros::service::call(mavros_trigger_service, req);
+        ros::service::call(mavros_trigger_service, req);
 
-      ROS_INFO("Called mavros trigger service! Success? %d Result? %d",
-               req.response.success, req.response.result);
-    } else {
-      ROS_WARN("Mavros service not available!");
+        ROS_INFO("Called mavros trigger service! Success? %d Result? %d",
+                 req.response.success, req.response.result);
+      } else {
+        ROS_WARN("Mavros service not available!");
+      }
     }
 
     first_image_ = true;
@@ -476,22 +479,21 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
   }
 
   void diagPoll() {
-    while (
-        !boost::this_thread::interruption_requested())  // Block until we need
-                                                        // to stop this
-                                                        // thread.
+    while (!boost::this_thread::interruption_requested())  // Block until we
+                                                           // need to stop this
+                                                           // thread.
     {
       diag_man->processDiagnostics(&spinnaker_);
     }
   }
 
   /*!
-  * \brief Function for the boost::thread to grabImages and publish them.
-  *
-  * This function continues until the thread is interupted.  Responsible for
-  * getting sensor_msgs::Image and publishing
-  * them.
-  */
+   * \brief Function for the boost::thread to grabImages and publish them.
+   *
+   * This function continues until the thread is interupted.  Responsible for
+   * getting sensor_msgs::Image and publishing
+   * them.
+   */
   void devicePoll() {
     ROS_INFO_ONCE("devicePoll");
 
@@ -611,7 +613,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
           if (force_mavros_triggering_ && !triggering_started_) {
             startMavrosTriggering();
           } else if (force_mavros_triggering_ && triggering_started_ &&
-                     trigger_sequence_offset_ > 20) {
+                     !multi_camera_mode_ && trigger_sequence_offset_ > 20) {
             ROS_ERROR(
                 "[Mavros Triggering] Trigger sequence offset is too high at "
                 "%d, "
@@ -839,6 +841,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
 
   // Triggering options.
   bool force_mavros_triggering_;
+  bool multi_camera_mode_;
   // Offset between sequence numbers from the camera and from mavros.
   int32_t trigger_sequence_offset_;
   std::map<uint32_t, ros::Time> sequence_time_map_;
