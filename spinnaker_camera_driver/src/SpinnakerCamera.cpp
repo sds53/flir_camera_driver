@@ -215,6 +215,11 @@ void SpinnakerCamera::connect() {
     }
 
     try {
+
+      pCam_->TLStream.StreamDefaultBufferCountMode.SetValue(Spinnaker::StreamDefaultBufferCountMode_Manual);
+      pCam_->TLStream.StreamBufferHandlingMode.SetValue(Spinnaker::StreamBufferHandlingMode_NewestFirstOverwrite);
+      pCam_->TLStream.StreamDefaultBufferCount.SetValue(1);
+
       // Initialize Camera
       pCam_->Init();
 
@@ -319,6 +324,7 @@ void SpinnakerCamera::grabImage(sensor_msgs::Image* image,
   if (pCam_ && captureRunning_) {
     // Handle "Image Retrieval" Exception
     try {
+
       Spinnaker::ImagePtr image_ptr = pCam_->GetNextImage(timeout_);
       //  std::string format(image_ptr->GetPixelFormatName());
       //  std::printf("\033[100m format: %s \n", format.c_str());
