@@ -645,10 +645,10 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
               if (!lookupSequenceStamp(image->header, &new_stamp)) {
                 if (image_queue_) {
                   ROS_WARN_THROTTLE(
-                      60,
+                      5,
                       "Overwriting image queue! Make sure you're getting "
                       "timestamps from mavros. This message will only print "
-                      "once a minute.");
+                      "once every 5 seconds.");
                 }
                 image_queue_ = image;
                 image_queue_exposure_us_ = exposure_us;
