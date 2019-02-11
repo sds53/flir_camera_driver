@@ -398,7 +398,7 @@ void SpinnakerCamera::grabImage(sensor_msgs::Image* image,
           if (bitsPerPixel == 16) {
             imageEncoding = sensor_msgs::image_encodings::MONO16;
           } else if (bitsPerPixel == 24) {
-            imageEncoding = sensor_msgs::image_encodings::RGB8;
+            imageEncoding = sensor_msgs::image_encodings::BGR8;
           } else {
             imageEncoding = sensor_msgs::image_encodings::MONO8;
           }
