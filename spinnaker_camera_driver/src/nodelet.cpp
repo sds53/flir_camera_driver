@@ -406,7 +406,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
     // Set up the camera to listen to triggers.
     config_.enable_trigger = "On";
     config_.trigger_activation_mode = "FallingEdge";
-    config_.trigger_source = "Line3";
+    config_.trigger_source = "Line2";
     paramCallback(config_, 0);
     srv_->updateConfig(config_);
     // Set these for now...
