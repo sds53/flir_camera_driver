@@ -3,6 +3,27 @@
 ## How to install
 https://eu.ptgrey.com/support/downloads/11048/
 ```sudo apt install libunwind8-dev```
+### Increasing USB memory buffer
+From [Pointgrey](https://www.ptgrey.com/tan/10685#ConfiguringUSBFS)
+
+By default, Linux limits image capture to 2 MB. To capture images over 2 MB, extend the USBFS limit on how many buffers can be locked into the driver.
+
+You can check your current buffer limit with
+```
+cat /sys/module/usbcore/parameters/usbfs_memory_mb
+```
+
+For capturing larger images, a buffer of ~1000 MB is recommended. Set it permanently by replacing the corresponding line in `/etc/default/grub` with the following:
+```
+GRUB_CMDLINE_LINUX_DEFAULT="nomodeset quiet splash usbcore.usbfs_memory_mb=1000"
+
+```
+followed by
+```
+sudo update-grub
+```
+and reboot.
+
 
 ## Other stuff
 
