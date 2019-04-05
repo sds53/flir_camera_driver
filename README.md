@@ -1,8 +1,9 @@
 # flir_camera_driver
 
 ## How to install
-https://eu.ptgrey.com/support/downloads/11048/
+https://eu.ptgrey.com/support/downloads/11048/  
 ```sudo apt install libunwind8-dev```
+* package depends on [mavros_msgs](git@github.com:ethz-asl/mavros.git)
 ### Increasing USB memory buffer
 From [Pointgrey](https://www.ptgrey.com/tan/10685#ConfiguringUSBFS)
 
