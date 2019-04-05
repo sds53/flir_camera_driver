@@ -163,9 +163,6 @@ class SpinnakerCamera {
   */
   void grabImage(sensor_msgs::Image* image, const std::string& frame_id);
 
-  // Gets the exposure of the last image, in microseconds.
-  double getLastExposure();
-
   /*!
   * \brief Will set grabImage timeout for the camera.
   *
@@ -196,6 +193,7 @@ class SpinnakerCamera {
       const Spinnaker::GenICam::gcstring property_name);
 
   uint32_t getSerial() { return serial_; }
+  uint64_t getFrameCounter(void);
 
  private:
   uint32_t
@@ -204,7 +202,6 @@ class SpinnakerCamera {
   Spinnaker::SystemPtr system_;
   Spinnaker::CameraList camList_;
   Spinnaker::CameraPtr pCam_;
-
   // TODO(mhosmar) use std::shared_ptr
   Spinnaker::GenApi::INodeMap* node_map_;
   std::shared_ptr<Camera> camera_;
@@ -232,7 +229,6 @@ class SpinnakerCamera {
   unsigned int packet_delay_;
 
   uint64_t timeout_;
-
   // This function configures the camera to add chunk data to each image. It
   // does
   // this by enabling each type of chunk data before enabling chunk data mode.

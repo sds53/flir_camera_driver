@@ -215,11 +215,6 @@ void SpinnakerCamera::connect() {
     }
 
     try {
-
-      pCam_->TLStream.StreamDefaultBufferCountMode.SetValue(Spinnaker::StreamDefaultBufferCountMode_Manual);
-      pCam_->TLStream.StreamBufferHandlingMode.SetValue(Spinnaker::StreamBufferHandlingMode_NewestFirstOverwrite);
-      pCam_->TLStream.StreamDefaultBufferCount.SetValue(1);
-
       // Initialize Camera
       pCam_->Init();
 
@@ -316,6 +311,11 @@ void SpinnakerCamera::stop() {
   }
 }
 
+uint64_t SpinnakerCamera::getFrameCounter(void) {
+  uint64_t ret = image_metadata_.GetFrameID();
+  return ret;
+}
+
 void SpinnakerCamera::grabImage(sensor_msgs::Image* image,
                                 const std::string& frame_id) {
   std::lock_guard<std::mutex> scopedLock(mutex_);
@@ -324,7 +324,10 @@ void SpinnakerCamera::grabImage(sensor_msgs::Image* image,
   if (pCam_ && captureRunning_) {
     // Handle "Image Retrieval" Exception
     try {
-
+      // Since it takes time to initialize (i.e., enabling trigger) arduino
+      // sync. Otherwise it will produce timeout error of this driver. Therefore
+      // give more time for grabbing an image by increasing timeout.
+      timeout_ = 60000;  // 60secs
       Spinnaker::ImagePtr image_ptr = pCam_->GetNextImage(timeout_);
       //  std::string format(image_ptr->GetPixelFormatName());
       //  std::printf("\033[100m format: %s \n", format.c_str());
@@ -334,12 +337,9 @@ void SpinnakerCamera::grabImage(sensor_msgs::Image* image,
             "[SpinnakerCamera::grabImage] Image received from camera " +
             std::to_string(serial_) + " is incomplete.");
       } else {
-        image_metadata_ = image_ptr->GetChunkData();
-
         // Set Image Time Stamp
-        // API description is wrong, this is NOT nanoseconds.
-        image->header.stamp.fromNSec(image_ptr->GetTimeStamp() * 1000);
-        image->header.seq = image_ptr->GetFrameID();
+        image->header.stamp.sec = image_ptr->GetTimeStamp() * 1e-9;
+        image->header.stamp.nsec = image_ptr->GetTimeStamp();
 
         // Check the bits per pixel.
         size_t bitsPerPixel = image_ptr->GetBitsPerPixel();
@@ -410,9 +410,20 @@ void SpinnakerCamera::grabImage(sensor_msgs::Image* image,
 
         // ROS_INFO_ONCE("\033[93m wxh: (%d, %d), stride: %d \n", width, height,
         // stride);
+        // Hack need to fix all the encoding bugs, stealed from https://github.com/raabuchanan/flir_camera_driver
+        Spinnaker::GenApi::CEnumerationPtr expected_encoding =
+        static_cast<Spinnaker::GenApi::CEnumerationPtr>(node_map_->GetNode("PixelFormat"));
+
+         Spinnaker::GenICam::gcstring expected_encoding_str = expected_encoding->ToString();
+        if(expected_encoding_str.compare("BGR8") == 0) {
+          imageEncoding = sensor_msgs::image_encodings::BGR8;
+        }
+
         fillImage(*image, imageEncoding, height, width, stride,
                   image_ptr->GetData());
         image->header.frame_id = frame_id;
+
+        image_metadata_ = image_ptr->GetChunkData();
       }  // end else
     } catch (const Spinnaker::Exception& e) {
       throw std::runtime_error(
@@ -430,10 +441,6 @@ void SpinnakerCamera::grabImage(sensor_msgs::Image* image,
         "[SpinnakerCamera::grabImage] Not connected to the camera.");
   }
 }  // end grabImage
-
-double SpinnakerCamera::getLastExposure() {
-  return image_metadata_.GetExposureTime();
-}
 
 void SpinnakerCamera::setTimeout(const double& timeout) {
   timeout_ = static_cast<uint64_t>(std::round(timeout * 1000));

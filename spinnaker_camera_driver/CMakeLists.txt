@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.0.2)
 
 set_directory_properties(PROPERTIES COMPILE_OPTIONS "-std=c++11;-Wall;-Wextra")
 
@@ -7,16 +7,19 @@ project(spinnaker_camera_driver)
 
 find_package(catkin REQUIRED COMPONENTS
   camera_info_manager diagnostic_updater dynamic_reconfigure
-  image_transport nodelet roscpp sensor_msgs)
+  image_exposure_msgs image_transport nodelet roscpp sensor_msgs
+  wfov_camera_msgs
+)
 
 find_package(OpenCV REQUIRED)
 
 generate_dynamic_reconfigure_options(
-  cfg/Spinnaker.cfg
+  #cfg/Spinnaker.cfg
+  cfg/SpinnakerBFS.cfg
 )
 
 catkin_package(CATKIN_DEPENDS
-  nodelet roscpp sensor_msgs
+  image_exposure_msgs nodelet roscpp sensor_msgs wfov_camera_msgs image_numbered_msgs
   DEPENDS OpenCV
 )
 
@@ -28,7 +31,7 @@ catkin_package(CATKIN_DEPENDS
 # their website during this step in the build process.
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 find_package(Spinnaker QUIET)
-if(NOT Spinnaker_LIBRARIES)
+if(NOT Spinnaker_FOUND)
   message(STATUS "libSpinnaker not found in system library path")
   include(cmake/DownloadSpinnaker.cmake)
   download_spinnaker(Spinnaker_LIBRARIES Spinnaker_INCLUDE_DIRS)
@@ -101,8 +104,16 @@ install(TARGETS
 
 # Redistributing the flycapture .so file is permitted by the SDK EULA:
 # http://www.ptgrey.com/support/kb/data/PGR-FlyCap-SDK-LA.pdf
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/usr/lib/ DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-         PATTERN libQt* EXCLUDE)
+if(EXISTS ${CMAKE_CURRENT_BINARY_DIR}/usr/lib)
+  install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/usr/lib/ DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+           PATTERN libQt* EXCLUDE)
+else()
+  get_filename_component(Spinnaker_LIB_DIR ${Spinnaker_LIBRARIES} DIRECTORY)
+  file(READ ${PROJECT_SOURCE_DIR}/cmake/install_files filenames)
+  foreach(filename ${filenames})
+    install(FILES ${Spinnaker_LIB_DIR}/${filename} DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION})
+  endforeach()
+endif()
 
 install(FILES nodelet_plugins.xml DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION} )
 
