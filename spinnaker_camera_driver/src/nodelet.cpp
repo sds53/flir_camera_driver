@@ -83,6 +83,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <fstream>
 #include <string>
 
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
+#include <opencv2/imgproc/imgproc.hpp>
+
 // For triggering from mavros
 #include <mavros_msgs/CamIMUStamp.h>
 #include <mavros_msgs/CommandTriggerControl.h>
@@ -154,9 +158,9 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       //                of binning settings."
       //                These values are in the post binned frame.
       if ((config.image_format_roi_width + config.image_format_roi_height) >
-              0 &&
+          0 &&
           (config.image_format_roi_width < spinnaker_.getWidthMax() ||
-           config.image_format_roi_height < spinnaker_.getHeightMax())) {
+              config.image_format_roi_height < spinnaker_.getHeightMax())) {
         roi_x_offset_ = config.image_format_x_offset;
         roi_y_offset_ = config.image_format_y_offset;
         roi_width_ = config.image_format_roi_width;
@@ -292,13 +296,13 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       if (serial == 0) {
         NODELET_WARN_ONCE("Waiting for camera serial path to become available");
         ros::Duration(1.0).sleep();  // Sleep for 1 second, wait for serial
-                                     // device path to become available
+        // device path to become available
       }
     }
 
     NODELET_DEBUG_ONCE("Using camera serial %d", serial);
 
-    spinnaker_.setDesiredCamera((uint32_t)serial);
+    spinnaker_.setDesiredCamera((uint32_t) serial);
 
     // Get GigE camera parameters:
     pnh.param<int>("packet_size", packet_size_, 1400);
@@ -340,6 +344,10 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       it_.reset(new image_transport::ImageTransport(nh));
       it_pub_ = it_->advertiseCamera("image_raw", 5);
 
+      pnh.param<bool>("publish_mono", publish_mono_, false);
+      if (publish_mono_) {
+        it_mono_pub_ = it_->advertiseCamera("image_mono_raw", 5);
+      }
       // Set up diagnostics
       updater_.setHardwareID("spinnaker_camera " + cinfo_name.str());
 
@@ -349,17 +357,17 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       pnh.param<double>("min_freq", min_freq_, desired_freq);
       pnh.param<double>("max_freq", max_freq_, desired_freq);
       double freq_tolerance;  // Tolerance before stating error on publish
-                              // frequency, fractional percent of desired
-                              // frequencies.
+      // frequency, fractional percent of desired
+      // frequencies.
       pnh.param<double>("freq_tolerance", freq_tolerance, 0.1);
       int window_size;  // Number of samples to consider in frequency
       pnh.param<int>("window_size", window_size, 100);
       double min_acceptable;  // The minimum publishing delay (in seconds)
-                              // before warning.  Negative values mean future
-                              // dated messages.
+      // before warning.  Negative values mean future
+      // dated messages.
       pnh.param<double>("min_acceptable_delay", min_acceptable, 0.0);
       double max_acceptable;  // The maximum publishing delay (in seconds)
-                              // before warning.
+      // before warning.
       pnh.param<double>("max_acceptable_delay", max_acceptable, 0.2);
       ros::SubscriberStatusCallback cb2 =
           boost::bind(&SpinnakerCameraNodelet::connectCb, this);
@@ -480,8 +488,8 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
 
   void diagPoll() {
     while (!boost::this_thread::interruption_requested())  // Block until we
-                                                           // need to stop this
-                                                           // thread.
+      // need to stop this
+      // thread.
     {
       diag_man->processDiagnostics(&spinnaker_);
     }
@@ -503,8 +511,8 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
     State previous_state = NONE;
 
     while (!boost::this_thread::interruption_requested())  // Block until we
-                                                           // need to stop this
-                                                           // thread.
+      // need to stop this
+      // thread.
     {
       bool state_changed = state != previous_state;
 
@@ -613,7 +621,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
           if (force_mavros_triggering_ && !triggering_started_) {
             startMavrosTriggering();
           } else if (force_mavros_triggering_ && triggering_started_ &&
-                     !multi_camera_mode_ && trigger_sequence_offset_ > 20) {
+              !multi_camera_mode_ && trigger_sequence_offset_ > 20) {
             ROS_ERROR(
                 "[Mavros Triggering] Trigger sequence offset is too high at "
                 "%d, "
@@ -678,6 +686,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
             // Publish the message using standard image transport
             if (should_publish) {
               it_pub_.publish(image, ci_);
+              publishMonoImage(image, ci_);
             }
           } catch (CameraTimeoutException& e) {
             NODELET_WARN("%s", e.what());
@@ -689,8 +698,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
           }
 
           break;
-        default:
-          NODELET_ERROR("Unknown camera state %d!", state);
+        default:NODELET_ERROR("Unknown camera state %d!", state);
       }
 
       // Update diagnostics
@@ -718,6 +726,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
           shiftTimestampToMidExposure(new_stamp, image_queue_exposure_us_);
       image_queue_->header.stamp += imu_time_offset_;
       it_pub_.publish(image_queue_, ci_);
+      publishMonoImage(image_queue_, ci_);
       image_queue_.reset();
       ROS_WARN_THROTTLE(60, "Publishing delayed image.");
     }
@@ -770,6 +779,30 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
     return true;
   }
 
+  void publishMonoImage(const sensor_msgs::ImagePtr& image,
+                        const sensor_msgs::CameraInfoPtr& ci) {
+    if (!publish_mono_) {
+      return;
+    }
+    cv_bridge::CvImagePtr cvimg = cv_bridge::toCvCopy(image, image->encoding);
+
+    // to mono
+    cv::Mat img_conv;
+
+    if (cvimg->encoding == "bgr8") {
+      cv::cvtColor(cvimg->image, img_conv, CV_BGR2GRAY);
+    } else if (cvimg->encoding == "rgb8") {
+      cv::cvtColor(cvimg->image, img_conv, CV_RGB2GRAY);
+    } else if (cvimg->encoding == "mono8") {
+      img_conv = cvimg->image;
+    }
+
+    cvimg->encoding = "mono8";
+    cvimg->image = img_conv;
+
+    it_mono_pub_.publish(cvimg->toImageMsg(), ci);
+  }
+
   ros::Time shiftTimestampToMidExposure(const ros::Time& stamp,
                                         double exposure_us) {
     ros::Time new_stamp = stamp + ros::Duration(exposure_us * 1e-6 / 2.0);
@@ -780,18 +813,21 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
   std::shared_ptr<
       dynamic_reconfigure::Server<spinnaker_camera_driver::SpinnakerConfig> >
       srv_;  ///< Needed to
-             ///  initialize
-             ///  and keep the
+  ///  initialize
+  ///  and keep the
   /// dynamic_reconfigure::Server
   /// in scope.
   std::shared_ptr<image_transport::ImageTransport>
       it_;  ///< Needed to initialize and keep the ImageTransport in
-            /// scope.
+  /// scope.
   std::shared_ptr<camera_info_manager::CameraInfoManager>
       cinfo_;  ///< Needed to initialize and keep the
-               /// CameraInfoManager in scope.
+  /// CameraInfoManager in scope.
   image_transport::CameraPublisher
       it_pub_;  ///< CameraInfoManager ROS publisher
+
+  image_transport::CameraPublisher it_mono_pub_;
+
   std::shared_ptr<ros::Publisher> diagnostics_pub_;
   /// publisher, has to be  a pointer because of constructor requirements
   ros::Subscriber sub_;  ///< Subscriber for gain and white balance changes.
@@ -804,7 +840,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
   double max_freq_;
 
   SpinnakerCamera spinnaker_;      ///< Instance of the SpinnakerCamera library,
-                                   /// used to interface with the hardware.
+  /// used to interface with the hardware.
   sensor_msgs::CameraInfoPtr ci_;  ///< Camera Info message.
   std::string
       frame_id_;  ///< Frame id for the camera messages, defaults to 'camera'
@@ -842,12 +878,16 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
   // Triggering options.
   bool force_mavros_triggering_;
   bool multi_camera_mode_;
+
+  // Mono options
+  bool publish_mono_;
   // Offset between sequence numbers from the camera and from mavros.
   int32_t trigger_sequence_offset_;
   std::map<uint32_t, ros::Time> sequence_time_map_;
   ros::Subscriber cam_imu_sub_;
   // We assume this can NEVER be more than 1.
   sensor_msgs::ImagePtr image_queue_;
+
   double image_queue_exposure_us_;
   bool first_image_;
   bool triggering_started_;
