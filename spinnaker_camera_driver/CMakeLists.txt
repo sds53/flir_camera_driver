@@ -7,7 +7,7 @@ project(spinnaker_camera_driver)
 
 find_package(catkin REQUIRED COMPONENTS
   camera_info_manager diagnostic_updater dynamic_reconfigure
-  image_transport nodelet roscpp sensor_msgs)
+  image_transport nodelet roscpp sensor_msgs mavros_msgs)
 
 find_package(OpenCV REQUIRED)
 
