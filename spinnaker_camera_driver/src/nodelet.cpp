@@ -430,8 +430,7 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
       if (ros::service::exists(mavros_trigger_service, false)) {
         mavros_msgs::CommandTriggerControl req;
         req.request.trigger_enable = true;
-        // This is NOT integration time, this is actually the sequence reset.
-        req.request.cycle_time = 1.0;
+        req.request.sequence_reset = true;
 
         ros::service::call(mavros_trigger_service, req);
 
