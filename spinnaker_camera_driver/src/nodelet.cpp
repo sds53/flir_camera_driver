@@ -623,6 +623,8 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
 
           try {
             sensor_msgs::Image::Ptr image(new sensor_msgs::Image);
+
+
             // Get the image from the camera library
             NODELET_DEBUG_ONCE(
                 "Starting a new grab from camera with serial {%d}.",
@@ -680,10 +682,6 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
             }
           } catch (CameraTimeoutException& e) {
             NODELET_WARN("%s", e.what());
-          }
-
-          catch (std::runtime_error& e) {
-            NODELET_ERROR("%s", e.what());
             state = ERROR;
           }
 
@@ -755,7 +753,17 @@ class SpinnakerCameraNodelet : public nodelet::Nodelet {
     const double kMinExpectedDelay = 0.0;
     const double kMaxExpectedDelay = 40.0 * 1e-3;
     double delay = header.stamp.toSec() - it->second.toSec();
-    if (delay < kMinExpectedDelay || delay > kMaxExpectedDelay) {
+    if (delay < kMinExpectedDelay) {
+      ROS_ERROR(
+          "[Mavros Triggering] Delay out of bounds! Actual delay: %f s, min: "
+          "%f s max: %f s. Resetting triggering on next image.",
+          delay, kMinExpectedDelay, kMaxExpectedDelay);
+          // trigger_sequence_offset_--;
+      // ROS_ERROR("Try decreasing the offset");
+      triggering_started_ = false;
+
+    }
+    if (delay > kMaxExpectedDelay) {
       ROS_ERROR(
           "[Mavros Triggering] Delay out of bounds! Actual delay: %f s, min: "
           "%f s max: %f s. Resetting triggering on next image.",
